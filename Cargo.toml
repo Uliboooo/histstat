@@ -1,5 +1,5 @@
 [package]
-name = "statistics_cmds"
+name = "histstat"
 version = "0.1.0"
 edition = "2024"
 
