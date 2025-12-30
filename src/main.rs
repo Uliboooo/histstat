@@ -32,9 +32,12 @@ impl From<io::Error> for Error {
 struct Cli {
     #[arg(short = 'c', long = "count", help = "default: 10")]
     count: Option<i32>,
+
+    #[arg(short = 'm', long = "mix")]
+    mix: bool,
 }
 
-fn load_hist_path() -> Result<PathBuf, Error> {
+fn load_hist_path(mix: bool) -> Result<Vec<PathBuf>, Error> {
     let home_dir = std::env::home_dir().unwrap();
     let mut history_files = fs::read_dir(&home_dir)?
         .filter_map(|f| f.ok())
@@ -55,11 +58,22 @@ fn load_hist_path() -> Result<PathBuf, Error> {
         })
         .collect::<Vec<_>>();
     history_files.sort_by_key(|f| f.1);
-    let latest_history_path = history_files
-        .last()
-        .ok_or(Error::NotFoundHistFile)?
-        .0
-        .to_path_buf();
+
+    let latest_history_path = if mix {
+        let end = std::cmp::min(history_files.len(), 3);
+        history_files[0..end]
+            .iter()
+            .cloned()
+            .map(|f| f.0)
+            .collect::<Vec<_>>()
+    } else {
+        let a = history_files
+            .last()
+            .ok_or(Error::NotFoundHistFile)?
+            .0
+            .to_path_buf();
+        Vec::from([a])
+    };
 
     Ok(latest_history_path)
 }
@@ -133,9 +147,20 @@ fn main() -> Result<(), Error> {
     let cli = Cli::parse();
     let count = cli.count.unwrap_or(10);
 
-    let hist_path = load_hist_path()?;
-    println!("{hist_path:?}");
-    let hist_lines = load_hist(&hist_path)?;
+    let hist_path = load_hist_path(cli.mix)?;
+    let hist_lines = if cli.mix {
+        hist_path
+            .iter()
+            .map(load_hist)
+            .filter_map(|f| f.ok())
+            .collect::<Vec<Vec<String>>>()
+    } else {
+        let b = load_hist(hist_path.last().unwrap())?;
+        vec![b]
+    }
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
     let mut final_output =
         format_statistics(sort_command_counts(count_commands(hist_lines)), count);
